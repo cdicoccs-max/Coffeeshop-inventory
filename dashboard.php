@@ -15,6 +15,7 @@ $totalSuppliers = $conn->query("SELECT COUNT(*) as cnt FROM Supplier")->fetch_as
 $totalInventory = $conn->query("SELECT SUM(quantity) as total FROM InventoryItem")->fetch_assoc()['total'];
 if ($totalInventory === null) $totalInventory = 0;
 
+// Get recent low stock items
 $lowStock = $conn->query("SELECT p.name, c.name AS category, i.quantity 
                          FROM Product p 
                          JOIN InventoryItem i ON p.productID = i.productID 

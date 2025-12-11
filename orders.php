@@ -38,6 +38,93 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $error = "Error cancelling order: " . $conn->error;
         }
     }
+    
+    // Handle new order creation
+    if (isset($_POST['add_new_order'])) {
+        $orderDate = $_POST['order_date'] ?? date('Y-m-d');
+        $productIDs = $_POST['product_id'] ?? [];
+        $quantities = $_POST['quantity'] ?? [];
+        
+        // Validate inputs
+        if (empty($orderDate)) {
+            $error = "Order date is required!";
+        } elseif (empty($productIDs) || count(array_filter($productIDs)) == 0) {
+            $error = "At least one product is required!";
+        } else {
+            // Start transaction
+            $conn->begin_transaction();
+            
+            try {
+                // Insert into Order table
+                $stmt = $conn->prepare("INSERT INTO `Order` (orderDate) VALUES (?)");
+                $stmt->bind_param("s", $orderDate);
+                $stmt->execute();
+                $orderID = $conn->insert_id;
+                
+                // Insert order items
+                $totalAmount = 0;
+                $hasValidItems = false;
+                
+                for ($i = 0; $i < count($productIDs); $i++) {
+                    if (!empty($productIDs[$i]) && isset($quantities[$i]) && $quantities[$i] > 0) {
+                        $productID = (int)$productIDs[$i];
+                        $quantity = (int)$quantities[$i];
+                        
+                        if ($productID <= 0 || $quantity <= 0) {
+                            continue;
+                        }
+                        
+                        // Check inventory availability
+                        $inventoryCheck = $conn->query("SELECT quantity FROM InventoryItem WHERE productID = $productID");
+                        $inventory = $inventoryCheck->fetch_assoc();
+                        
+                        if ($inventory && $inventory['quantity'] >= $quantity) {
+                            // Get product price from Product table
+                            $productResult = $conn->query("SELECT price FROM Product WHERE productID = $productID");
+                            if ($productResult && $productResult->num_rows > 0) {
+                                $product = $productResult->fetch_assoc();
+                                $price = $product['price'];
+                                
+                                // Insert order item WITHOUT price column
+                                $stmt = $conn->prepare("INSERT INTO OrderItem (orderID, productID, quantity) VALUES (?, ?, ?)");
+                                $stmt->bind_param("iii", $orderID, $productID, $quantity);
+                                
+                                if ($stmt->execute()) {
+                                    // Update inventory
+                                    $conn->query("UPDATE InventoryItem SET quantity = quantity - $quantity WHERE productID = $productID");
+                                    
+                                    $totalAmount += $price * $quantity;
+                                    $hasValidItems = true;
+                                } else {
+                                    throw new Exception("Failed to insert order item: " . $stmt->error);
+                                }
+                            } else {
+                                throw new Exception("Product with ID $productID not found!");
+                            }
+                        } else {
+                            $available = $inventory ? $inventory['quantity'] : 0;
+                            throw new Exception("Insufficient inventory for product ID: $productID. Available: $available, Requested: $quantity");
+                        }
+                    }
+                }
+                
+                if (!$hasValidItems) {
+                    throw new Exception("No valid items in order!");
+                }
+                
+                $conn->commit();
+                $success = "New order #$orderID created successfully! Total amount: ₱" . number_format($totalAmount, 2);
+                
+                // Redirect to refresh the page and show new order
+                header("Location: orders.php?success=Order+created+successfully");
+                exit();
+                
+            } catch (Exception $e) {
+                $conn->rollback();
+                $error = "Error creating order: " . $e->getMessage();
+            }
+        }
+    }
 }
 
 // Get all orders with their items
@@ -86,6 +173,15 @@ $popularProducts = $conn->query("
     GROUP BY oi.productID
     ORDER BY total_sold DESC
     LIMIT 10
+");
+
+// Get available products for new order form
+$availableProducts = $conn->query("
+    SELECT p.productID, p.name, p.price, i.quantity as stock 
+    FROM Product p 
+    JOIN InventoryItem i ON p.productID = i.productID 
+    WHERE i.quantity > 0 
+    ORDER BY p.name
 ");
 ?>
 <!DOCTYPE html>
@@ -336,6 +432,135 @@ $popularProducts = $conn->query("
             border-color: var(--accent);
         }
         
+        /* Add Order Button Styles */
+        .header-actions {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        
+        .add-order-btn {
+            background: linear-gradient(45deg, var(--primary), var(--accent));
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(139,69,19,0.2);
+        }
+        
+        .add-order-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(139,69,19,0.3);
+        }
+        
+        /* New Order Form Styles */
+        .new-order-form {
+            background: white;
+            border-radius: 16px;
+            padding: 25px;
+            margin-bottom: 25px;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.05);
+            border: 1px solid rgba(139,69,19,0.1);
+            display: none;
+        }
+        
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 25px;
+        }
+        
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        
+        .form-group label {
+            font-weight: 600;
+            color: var(--primary);
+            font-size: 0.9rem;
+        }
+        
+        .form-group input,
+        .form-group select {
+            padding: 10px 12px;
+            border: 1px solid rgba(139,69,19,0.2);
+            border-radius: 8px;
+            font-size: 1rem;
+        }
+        
+        .form-group input:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(212,165,116,0.2);
+        }
+        
+        .product-row {
+            display: grid;
+            grid-template-columns: 2fr 1fr 1fr auto;
+            gap: 15px;
+            align-items: end;
+            margin-bottom: 15px;
+            padding: 15px;
+            background: rgba(245,241,234,0.3);
+            border-radius: 8px;
+        }
+        
+        .add-product-btn {
+            background: rgba(212,165,116,0.2);
+            color: var(--accent);
+            border: 1px dashed rgba(212,165,116,0.5);
+            padding: 10px;
+            border-radius: 8px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            transition: all 0.3s ease;
+        }
+        
+        .add-product-btn:hover {
+            background: rgba(212,165,116,0.3);
+            border-color: var(--accent);
+        }
+        
+        .remove-product-btn {
+            background: rgba(196,69,54,0.1);
+            color: var(--error);
+            border: none;
+            width: 40px;
+            height: 40px;
+            border-radius: 8px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+        }
+        
+        .remove-product-btn:hover {
+            background: rgba(196,69,54,0.2);
+        }
+        
+        .form-actions {
+            display: flex;
+            gap: 15px;
+            justify-content: flex-end;
+            padding-top: 20px;
+            border-top: 1px solid rgba(139,69,19,0.1);
+        }
+        
         @media (max-width: 1024px) {
             .orders-container {
                 grid-template-columns: 1fr;
@@ -365,6 +590,20 @@ $popularProducts = $conn->query("
             .order-items {
                 max-width: 100%;
             }
+            
+            .header-actions {
+                flex-direction: column;
+                gap: 15px;
+                align-items: flex-start;
+            }
+            
+            .add-order-btn {
+                align-self: stretch;
+            }
+            
+            .product-row {
+                grid-template-columns: 1fr;
+            }
         }
     </style>
 </head>
@@ -377,6 +616,13 @@ $popularProducts = $conn->query("
                 <div class="greeting">
                     <h1>Order Tracking</h1>
                     <p>Monitor and manage all customer orders</p>
+                </div>
+                <div class="header-actions">
+                    <div></div>
+                    <button class="add-order-btn" onclick="showNewOrderForm()">
+                        <i class="fas fa-plus-circle"></i>
+                        Add New Order
+                    </button>
                 </div>
             </div>
             
@@ -392,6 +638,47 @@ $popularProducts = $conn->query("
                 </div>
             <?php endif; ?>
             
+            <!-- New Order Form (Initially Hidden) -->
+            <div id="newOrderForm" class="new-order-form">
+                <h3 style="color: var(--primary); margin-bottom: 20px; display: flex; align-items: center; gap: 10px;">
+                    <i class="fas fa-cart-plus"></i>
+                    Create New Order
+                </h3>
+                
+                <form method="POST" id="createOrderForm">
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label for="order_date"><i class="fas fa-calendar"></i> Order Date</label>
+                            <input type="date" id="order_date" name="order_date" value="<?php echo date('Y-m-d'); ?>" required>
+                        </div>
+                    </div>
+                    
+                    <h4 style="color: var(--primary); margin: 25px 0 15px 0; display: flex; align-items: center; gap: 10px;">
+                        <i class="fas fa-box"></i>
+                        Order Items
+                    </h4>
+                    
+                    <div id="productRows">
+                        <!-- Product rows will be added here -->
+                    </div>
+                    
+                    <button type="button" class="add-product-btn" onclick="addProductRow()">
+                        <i class="fas fa-plus"></i>
+                        Add Product
+                    </button>
+                    
+                    <div class="form-actions">
+                        <button type="button" class="btn" onclick="hideNewOrderForm()" style="background: rgba(44,24,16,0.1); color: var(--primary);">
+                            Cancel
+                        </button>
+                        <button type="submit" name="add_new_order" class="btn btn-primary">
+                            <i class="fas fa-check"></i>
+                            Create Order
+                        </button>
+                    </div>
+                </form>
+            </div>
+            
             <!-- Order Statistics -->
             <div class="orders-stats">
                 <div class="stat-box">
@@ -402,7 +689,7 @@ $popularProducts = $conn->query("
                     <div class="stat-label">Orders Today</div>
                     <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(139,69,19,0.1);">
                         <div style="font-size: 0.9rem; color: rgba(44,24,16,0.6);">
-                            $<?php echo number_format($todayOrders['total'] ?? 0, 2); ?> revenue
+                            ₱<?php echo number_format($todayOrders['total'] ?? 0, 2); ?> revenue
                         </div>
                     </div>
                 </div>
@@ -415,7 +702,7 @@ $popularProducts = $conn->query("
                     <div class="stat-label">This Month</div>
                     <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(139,69,19,0.1);">
                         <div style="font-size: 0.9rem; color: rgba(44,24,16,0.6);">
-                            $<?php echo number_format($monthOrders['total'] ?? 0, 2); ?> revenue
+                            ₱<?php echo number_format($monthOrders['total'] ?? 0, 2); ?> revenue
                         </div>
                     </div>
                 </div>
@@ -497,7 +784,7 @@ $popularProducts = $conn->query("
                                             </div>
                                         </div>
                                         <div class="order-amount">
-                                            $<?php echo number_format($order['total_amount'] ?? 0, 2); ?>
+                                            ₱<?php echo number_format($order['total_amount'] ?? 0, 2); ?>
                                         </div>
                                     </div>
                                     
@@ -557,7 +844,7 @@ $popularProducts = $conn->query("
                         <div class="empty-state">
                             <i class="fas fa-shopping-cart"></i>
                             <h3>No Orders Found</h3>
-                            <p>Orders will appear here when customers make purchases.</p>
+                            <p>Click "Add New Order" to create your first order.</p>
                         </div>
                     <?php endif; ?>
                 </div>
@@ -619,7 +906,7 @@ $popularProducts = $conn->query("
                         <div style="font-size: 0.9rem; color: rgba(44,24,16,0.7);">
                             <div style="margin-bottom: 5px;">
                                 <i class="fas fa-dollar-sign" style="color: var(--success);"></i>
-                                <strong>Avg Order:</strong> $<?php echo number_format($avgOrderValue ?? 0, 2); ?>
+                                <strong>Avg Order:</strong> ₱<?php echo number_format($avgOrderValue ?? 0, 2); ?>
                             </div>
                             <?php if ($busiestDay): ?>
                                 <div>
@@ -684,6 +971,162 @@ $popularProducts = $conn->query("
     </div>
     
     <script>
+        // Products data for the new order form
+        const availableProducts = <?php 
+            $productsArray = [];
+            while($product = $availableProducts->fetch_assoc()) {
+                $productsArray[] = $product;
+            }
+            echo json_encode($productsArray);
+        ?>;
+        
+        // New Order Form Functions
+        function showNewOrderForm() {
+            document.getElementById('newOrderForm').style.display = 'block';
+            // Scroll to form
+            document.getElementById('newOrderForm').scrollIntoView({ behavior: 'smooth' });
+            // Add first product row if none exist
+            if (document.querySelectorAll('.product-row').length === 0) {
+                addProductRow();
+            }
+        }
+        
+        function hideNewOrderForm() {
+            document.getElementById('newOrderForm').style.display = 'none';
+            // Clear form
+            document.getElementById('createOrderForm').reset();
+            // Remove all product rows
+            document.getElementById('productRows').innerHTML = '';
+        }
+        
+        function addProductRow() {
+            const productRows = document.getElementById('productRows');
+            const rowCount = productRows.querySelectorAll('.product-row').length;
+            const rowId = `product_${rowCount}`;
+            
+            // Create product options
+            let productOptions = '<option value="">Select Product</option>';
+            availableProducts.forEach(product => {
+                productOptions += `<option value="${product.productID}" data-price="${product.price}" data-stock="${product.stock}">${product.name} ($${product.price}, Stock: ${product.stock})</option>`;
+            });
+            
+            const rowHTML = `
+                <div class="product-row" id="${rowId}">
+                    <div class="form-group">
+                        <label>Product</label>
+                        <select name="product_id[]" class="product-select" onchange="updateProductPrice(this)" required>
+                            ${productOptions}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Quantity</label>
+                        <input type="number" name="quantity[]" min="1" value="1" class="quantity-input" oninput="validateQuantity(this)" required>
+                        <small class="stock-info" style="color: rgba(44,24,16,0.5); font-size: 0.8rem;"></small>
+                    </div>
+                    <div class="form-group">
+                        <label>Price</label>
+                        <input type="text" class="price-display" value="$0.00" readonly style="background: rgba(0,0,0,0.05);">
+                    </div>
+                    <button type="button" class="remove-product-btn" onclick="removeProductRow('${rowId}')" ${rowCount === 0 ? 'disabled' : ''}>
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
+            `;
+            
+            productRows.insertAdjacentHTML('beforeend', rowHTML);
+            // Update remove button states
+            updateRemoveButtons();
+        }
+        
+        function removeProductRow(rowId) {
+            const row = document.getElementById(rowId);
+            if (row) {
+                row.remove();
+                updateRemoveButtons();
+            }
+        }
+        
+        function updateRemoveButtons() {
+            const rows = document.querySelectorAll('.product-row');
+            const removeButtons = document.querySelectorAll('.remove-product-btn');
+            
+            if (rows.length === 1) {
+                removeButtons[0].disabled = true;
+                removeButtons[0].style.opacity = '0.5';
+                removeButtons[0].style.cursor = 'not-allowed';
+            } else {
+                removeButtons.forEach(btn => {
+                    btn.disabled = false;
+                    btn.style.opacity = '1';
+                    btn.style.cursor = 'pointer';
+                });
+            }
+        }
+        
+        function updateProductPrice(select) {
+            const selectedOption = select.options[select.selectedIndex];
+            const price = selectedOption.getAttribute('data-price') || '0';
+            const stock = selectedOption.getAttribute('data-stock') || '0';
+            
+            const row = select.closest('.product-row');
+            const priceInput = row.querySelector('.price-display');
+            const quantityInput = row.querySelector('.quantity-input');
+            const stockInfo = row.querySelector('.stock-info');
+            
+            priceInput.value = `$${parseFloat(price).toFixed(2)}`;
+            stockInfo.textContent = `In stock: ${stock}`;
+            
+            // Set max quantity based on stock
+            quantityInput.max = stock;
+            
+            // Validate current quantity
+            validateQuantity(quantityInput);
+        }
+        
+        function validateQuantity(input) {
+            const row = input.closest('.product-row');
+            const select = row.querySelector('.product-select');
+            const selectedOption = select.options[select.selectedIndex];
+            const stock = parseInt(selectedOption.getAttribute('data-stock') || '0');
+            const quantity = parseInt(input.value) || 0;
+            
+            if (quantity > stock) {
+                input.style.borderColor = 'var(--error)';
+                input.style.backgroundColor = 'rgba(196,69,54,0.1)';
+            } else {
+                input.style.borderColor = '';
+                input.style.backgroundColor = '';
+            }
+        }
+        
+        // Initialize with one product row when form is shown
+        document.getElementById('newOrderForm').addEventListener('click', function() {
+            if (document.querySelectorAll('.product-row').length === 0) {
+                addProductRow();
+            }
+        });
+        
+        // Validate form before submission
+        document.getElementById('createOrderForm').addEventListener('submit', function(e) {
+            const productSelects = document.querySelectorAll('.product-select');
+            let hasSelectedProduct = false;
+            
+            productSelects.forEach(select => {
+                if (select.value) {
+                    hasSelectedProduct = true;
+                }
+            });
+            
+            if (!hasSelectedProduct) {
+                e.preventDefault();
+                alert('Please select at least one product for the order.');
+                return false;
+            }
+            
+            return true;
+        });
+        
+        // Existing functions
         function filterOrders(filter) {
             const buttons = document.querySelectorAll('.date-filter button');
             buttons.forEach(btn => btn.classList.remove('active'));

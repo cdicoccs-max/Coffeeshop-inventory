@@ -235,7 +235,7 @@ $suppliers = $conn->query("SELECT * FROM Supplier ORDER BY name");
                                     </td>
                                     <td><?php echo htmlspecialchars($product['category_name'] ?? 'N/A'); ?></td>
                                     <td><?php echo htmlspecialchars($product['supplier_name'] ?? 'N/A'); ?></td>
-                                    <td class="price">$<?php echo number_format($product['price'], 2); ?></td>
+                                    <td class="price">₱<?php echo number_format($product['price'], 2); ?></td>
                                     <td>
                                         <span class="status-badge <?php echo $status_class; ?>">
                                             <?php echo $status_text; ?> (<?php echo $quantity; ?>)
