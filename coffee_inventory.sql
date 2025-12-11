@@ -284,7 +284,8 @@ CREATE TABLE `Users` (
 --
 
 INSERT INTO `Users` (`userID`, `username`, `password`, `role`, `created_at`) VALUES
-(1, 'admin', '5d896cd278363908292d1fde8315c1b8', 'admin', '2025-12-04 19:10:05');
+(1, 'admin', '5d896cd278363908292d1fde8315c1b8', 'admin', '2025-12-04 19:10:05'),
+(2, 'newadmin', MD5('adminnew123'), 'admin', NOW());
 
 --
 -- Indexes for dumped tables
