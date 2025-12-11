@@ -71,10 +71,10 @@ if (isset($_GET['id'])) {
                                             <?php echo $item['quantity']; ?>
                                         </td>
                                         <td style="padding: 10px; text-align: right;">
-                                            $<?php echo number_format($item['price'], 2); ?>
+                                            ₱<?php echo number_format($item['price'], 2); ?>
                                         </td>
                                         <td style="padding: 10px; text-align: right; font-weight: 600;">
-                                            $<?php echo number_format($itemTotal, 2); ?>
+                                            ₱<?php echo number_format($itemTotal, 2); ?>
                                         </td>
                                     </tr>
                                 <?php endwhile; ?>
@@ -96,17 +96,17 @@ if (isset($_GET['id'])) {
                 
                 <div style="display: flex; justify-content: space-between; margin-bottom: 10px; padding: 8px 0;">
                     <span>Subtotal:</span>
-                    <span>$<?php echo number_format($subtotal, 2); ?></span>
+                    <span>₱<?php echo number_format($subtotal, 2); ?></span>
                 </div>
                 
                 <div style="display: flex; justify-content: space-between; margin-bottom: 10px; padding: 8px 0;">
                     <span>Tax (10%):</span>
-                    <span>$<?php echo number_format($subtotal * 0.10, 2); ?></span>
+                    <span>₱<?php echo number_format($subtotal * 0.10, 2); ?></span>
                 </div>
                 
                 <div style="display: flex; justify-content: space-between; font-weight: 700; font-size: 1.2rem; margin-top: 15px; padding-top: 15px; border-top: 2px solid rgba(139,69,19,0.2);">
                     <span>Total:</span>
-                    <span>$<?php echo number_format($subtotal * 1.10, 2); ?></span>
+                    <span>₱<?php echo number_format($subtotal * 1.10, 2); ?></span>
                 </div>
             </div>
             

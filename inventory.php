@@ -233,7 +233,7 @@ $inventory = $conn->query("
                                         <small>ID: #<?php echo $item['productID']; ?></small>
                                     </td>
                                     <td><?php echo htmlspecialchars($item['category']); ?></td>
-                                    <td>$<?php echo number_format($item['price'], 2); ?></td>
+                                    <td>₱<?php echo number_format($item['price'], 2); ?></td>
                                     <td>
                                         <strong style="font-size: 1.2rem;"><?php echo $item['quantity']; ?></strong> units
                                     </td>

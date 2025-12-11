@@ -73,10 +73,10 @@ $pdf->Cell(0, 10, 'Key Metrics', 0, 1, 'L');
 $pdf->SetFont('helvetica', '', 10);
 
 $metrics = [
-    ['Total Revenue', '$' . number_format($summary['total_revenue'] ?? 0, 2)],
+    ['Total Revenue', '₱' . number_format($summary['total_revenue'] ?? 0, 2)],
     ['Total Orders', $summary['total_orders'] ?? 0],
     ['Items Sold', $summary['total_items_sold'] ?? 0],
-    ['Average Order Value', '$' . number_format($summary['avg_order_value'] ?? 0, 2)]
+    ['Average Order Value', '₱' . number_format($summary['avg_order_value'] ?? 0, 2)]
 ];
 
 foreach ($metrics as $metric) {
@@ -132,7 +132,7 @@ if ($sales_data->num_rows > 0) {
         $pdf->Cell($w[0], 6, date('M d, Y', strtotime($row['sale_date'])), 'LR', 0, 'L', $fill);
         $pdf->Cell($w[1], 6, $row['total_orders'], 'LR', 0, 'C', $fill);
         $pdf->Cell($w[2], 6, $row['total_items'], 'LR', 0, 'C', $fill);
-        $pdf->Cell($w[3], 6, '$' . number_format($row['total_revenue'], 2), 'LR', 0, 'R', $fill);
+        $pdf->Cell($w[3], 6, '₱' . number_format($row['total_revenue'], 2), 'LR', 0, 'R', $fill);
         $pdf->Ln();
         
         $fill = !$fill;
@@ -149,7 +149,7 @@ if ($sales_data->num_rows > 0) {
     $pdf->SetFont('helvetica', 'B', 10);
     $pdf->Cell(115, 6, 'TOTAL (' . $sales_data->num_rows . ' days):', 0, 0, 'R');
     $pdf->Cell(20, 6, $total_items . ' items', 0, 0, 'C');
-    $pdf->Cell(25, 6, '$' . number_format($total_revenue, 2), 0, 1, 'R');
+    $pdf->Cell(25, 6, '₱' . number_format($total_revenue, 2), 0, 1, 'R');
 }
 
 $pdf->Ln(10);
@@ -198,7 +198,7 @@ if ($top_products->num_rows > 0) {
         
         $pdf->Cell($w[0], 6, $product_name, 'LR', 0, 'L', $fill);
         $pdf->Cell($w[1], 6, $row['total_sold'], 'LR', 0, 'C', $fill);
-        $pdf->Cell($w[2], 6, '$' . number_format($row['revenue'], 2), 'LR', 0, 'R', $fill);
+        $pdf->Cell($w[2], 6, '₱' . number_format($row['revenue'], 2), 'LR', 0, 'R', $fill);
         $pdf->Ln();
         
         $fill = !$fill;
